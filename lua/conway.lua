@@ -1,5 +1,6 @@
 local M = {}
 local conway_timer = nil
+local active_char = "■"
 
 local function initialize_grid()
 	local height = vim.api.nvim_win_get_height(0)
@@ -66,13 +67,25 @@ local function next_generation(grid)
 	return new_grid
 end
 
+local function get_last_active(row)
+	for i = #row, 1, -1 do
+		if row[i] == 1 then
+			return i
+		end
+	end
+	return -1
+end
+
 -- Show the grid in the Neovim buffer
 local function display_grid(grid, buf)
 	local lines = {}
 	for i = 1, #grid do
 		local line = {}
+		local index_last_active = get_last_active(grid[i])
 		for j = 1, #grid[i] do
-			table.insert(line, grid[i][j] == 1 and "■" or " ")
+			if index_last_active == j or index_last_active == -1 then
+			end
+			table.insert(line, grid[i][j] == 1 and active_char or " ")
 		end
 		table.insert(lines, table.concat(line, ""))
 	end
@@ -83,6 +96,10 @@ end
 function M.start_conway()
 	local buf = vim.api.nvim_create_buf(false, true)
 	vim.api.nvim_set_current_buf(buf)
+	vim.api.nvim_buf_set_option(buf, "list", false)
+	vim.api.nvim_buf_set_option(buf, "number", false)
+	vim.api.nvim_buf_set_option(buf, "relativenumber", false)
+	vim.api.nvim_buf_set_option(buf, "colorcolumn", "")
 	local grid = initialize_grid()
 	fill_grid_random(grid)
 	display_grid(grid, buf)
