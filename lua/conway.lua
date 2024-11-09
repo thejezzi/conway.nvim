@@ -1,6 +1,10 @@
+local NOACTIVE = -1
+
 local M = {}
 local conway_timer = nil
-local active_char = "■"
+local active_char = "■" --"▊" -- "▇" -- "■"
+local update_interval = 100
+local multiplier = 0.2
 
 local function initialize_grid()
 	local height = vim.api.nvim_win_get_height(0)
@@ -19,7 +23,7 @@ end
 local function fill_grid_random(grid)
 	for _, vi in pairs(grid) do
 		for j, _ in pairs(vi) do
-			vi[j] = math.random() < 0.1 and 1 or 0
+			vi[j] = math.random() < multiplier and 1 or 0
 		end
 	end
 	return grid
@@ -73,7 +77,7 @@ local function get_last_active(row)
 			return i
 		end
 	end
-	return -1
+	return NOACTIVE
 end
 
 -- Show the grid in the Neovim buffer
@@ -83,8 +87,23 @@ local function display_grid(grid, buf)
 		local line = {}
 		local index_last_active = get_last_active(grid[i])
 		for j = 1, #grid[i] do
-			if index_last_active == j or index_last_active == -1 then
+			if index_last_active + 1 == j or index_last_active == NOACTIVE then
+				goto continue
 			end
+			table.insert(line, grid[i][j] == 1 and active_char or " ")
+			::continue::
+		end
+		table.insert(lines, table.concat(line, ""))
+	end
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+end
+
+-- Show the grid in the Neovim buffer
+local function display_grid_fill_all(grid, buf)
+	local lines = {}
+	for i = 1, #grid do
+		local line = {}
+		for j = 1, #grid[i] do
 			table.insert(line, grid[i][j] == 1 and active_char or " ")
 		end
 		table.insert(lines, table.concat(line, ""))
@@ -92,22 +111,83 @@ local function display_grid(grid, buf)
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 end
 
--- Start Conway's Game of Life
-function M.start_conway()
+local function unset_opts()
+	vim.api.nvim_set_option_value("list", false, {})
+	vim.api.nvim_set_option_value("number", false, {})
+	vim.api.nvim_set_option_value("relativenumber", false, {})
+	vim.api.nvim_set_option_value("colorcolumn", "", {})
+end
+
+local function create_scratch_buffer()
 	local buf = vim.api.nvim_create_buf(false, true)
 	vim.api.nvim_set_current_buf(buf)
-	vim.api.nvim_buf_set_option(buf, "list", false)
-	vim.api.nvim_buf_set_option(buf, "number", false)
-	vim.api.nvim_buf_set_option(buf, "relativenumber", false)
-	vim.api.nvim_buf_set_option(buf, "colorcolumn", "")
+	unset_opts()
+	return buf
+end
+
+local function defer_closing(buf)
+	local _ = vim.api.nvim_create_augroup("conway", { clear = true })
+	vim.api.nvim_create_autocmd({ "BufLeave", "BufUnload" }, {
+		buffer = buf,
+		once = true,
+		group = "conway",
+		callback = function()
+			M.stop_conway()
+			vim.api.nvim_clear_autocmds({ group = "conway" })
+		end,
+	})
+end
+
+local function fill_from_current_buffer(grid)
+	local current_buf = vim.api.nvim_get_current_buf()
+	local lines = vim.api.nvim_buf_get_lines(current_buf, 0, -1, false)
+
+	for line_num, line in pairs(lines) do
+		for char_num = 1, #line do
+			local current_char = line:sub(char_num, char_num)
+			if current_char ~= " " then
+				grid[line_num][char_num] = 1
+			end
+		end
+	end
+end
+
+function M.from_current_buffer()
+	local grid = initialize_grid()
+	fill_from_current_buffer(grid)
+	local buf = create_scratch_buffer()
+	display_grid(grid, buf)
+	defer_closing(buf)
+
+	conway_timer = vim.uv.new_timer()
+	conway_timer:start(
+		0,
+		update_interval,
+		vim.schedule_wrap(function()
+			grid = next_generation(grid)
+			display_grid(grid, buf)
+		end)
+	)
+end
+
+function M.new_grid()
+	local grid = initialize_grid()
+	local buf = create_scratch_buffer()
+	display_grid_fill_all(grid, buf)
+end
+
+-- Start Conway's Game of Life
+function M.start_conway()
+	local buf = create_scratch_buffer()
 	local grid = initialize_grid()
 	fill_grid_random(grid)
 	display_grid(grid, buf)
+	defer_closing(buf)
 
-	conway_timer = vim.loop.new_timer()
+	conway_timer = vim.uv.new_timer()
 	conway_timer:start(
 		0,
-		1000,
+		update_interval,
 		vim.schedule_wrap(function()
 			grid = next_generation(grid)
 			display_grid(grid, buf)
@@ -128,6 +208,8 @@ function M.stop_conway()
 end
 
 vim.api.nvim_create_user_command("Conway", M.start_conway, { nargs = 0 })
+vim.api.nvim_create_user_command("ConwayFromCurrent", M.from_current_buffer, { nargs = 0 })
+vim.api.nvim_create_user_command("ConwayNewGrid", M.new_grid, { nargs = 0 })
 vim.api.nvim_create_user_command("ConwayStop", M.stop_conway, { nargs = 0 })
 
 return M
