@@ -198,7 +198,7 @@ local function read_from_current_buffer(grid)
     for line_num, line in pairs(visible_lines) do
         for char_num = 1, #line do
             local current_char = line:sub(char_num, char_num)
-            if grid[line_num] ~= nil and current_char ~= off_char then
+            if grid[line_num] ~= nil and current_char ~= global_opts.off_char then
                 grid[line_num][char_num] = 1
             end
         end
