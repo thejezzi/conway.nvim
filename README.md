@@ -1,5 +1,7 @@
 # ⚛️ conway.nvim
 
+![demo](./assets/lossy_demo.gif)
+
 **conway.nvim** is an experimental and entertaining Neovim plugin that brings John Horton Conway’s Game of Life into your text editor. This plugin allows you to play the classic cellular automaton within Neovim, using randomly generated patterns, custom shapes, or even structures derived from your code.
 
 ## ✨ Features
