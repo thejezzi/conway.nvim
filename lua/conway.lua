@@ -319,17 +319,6 @@ local SUBCOMMANDS = {
     print = M.print_settings,
 }
 
----returns all values as slice
----@param t table<string, function>
----@return string[]
-local function as_string_slice(t)
-    local slice = {}
-    for k, _ in pairs(t) do
-        table.insert(slice, k)
-    end
-    return slice
-end
-
 ---parse returns the corresponding subcommand
 ---@param s string
 ---@return nil|string
@@ -356,7 +345,11 @@ end
 ---returns the keys as string values for neovim command completion
 ---@return string[]
 local function cmd_completion()
-    return as_string_slice(SUBCOMMANDS)
+    local slice = {}
+    for k, _ in pairs(SUBCOMMANDS) do
+        table.insert(slice, k)
+    end
+    return slice
 end
 
 vim.api.nvim_create_user_command("Conway", handle_cmd, {
