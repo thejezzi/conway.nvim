@@ -1,3 +1,5 @@
+require("types")
+
 local NOACTIVE = -1
 
 local M = {}
@@ -6,6 +8,8 @@ local active_char = "■" --"▊" -- "▇" -- "■"
 local update_interval = 100
 local multiplier = 0.2
 
+---initialize_grid creates a new matrix with zeroed values
+---@return Grid
 local function initialize_grid()
 	local height = vim.api.nvim_win_get_height(0)
 	local width = vim.api.nvim_win_get_width(0)
@@ -14,13 +18,18 @@ local function initialize_grid()
 	for i = 1, height do
 		grid[i] = {}
 		for j = 1, width do
-			grid[i][j] = 0 -- math.random() < 0.3 and 1 or 0 -- ca. 30% der Zellen leben zu Beginn
+			grid[i][j] = 0
 		end
 	end
 	return grid
 end
 
-local function fill_grid_random(grid)
+---fill_grid_randomly iterates over every node in the grid and sets it to true
+---with a chance defined by the global multiplier variable
+---
+---@param grid Grid
+---@return Grid
+local function fill_grid_randomly(grid)
 	for _, vi in pairs(grid) do
 		for j, _ in pairs(vi) do
 			vi[j] = math.random() < multiplier and 1 or 0
@@ -29,6 +38,29 @@ local function fill_grid_random(grid)
 	return grid
 end
 
+---count_neighbors iterates over each neighbor node and checks how many active
+---neighbors there are. This is important to determine the next state of the
+---current node
+---
+---Example:
+---  Imagine a glider shape where we want to look for neighbors of r which is
+---  currently off
+---
+---1  x
+---2 x r
+---3 xxx
+---
+--- ```lua
+--- local neighbors = count_neighbors(grid, 2, 3, 10, 10)
+--- print(neighbors) -- should print 3 and therefore come alive
+--- ```
+---
+---@param grid Grid
+---@param x integer current row
+---@param y integer actual position in the row
+---@param max_height integer max height of where to look for neighbors
+---@param max_width integer max width of where to look for neighbors
+---@return integer count of actual active neighbors
 local function count_neighbors(grid, x, y, max_height, max_width)
 	local count = 0
 	local directions = {
@@ -50,7 +82,10 @@ local function count_neighbors(grid, x, y, max_height, max_width)
 	return count
 end
 
--- Runs a tick (one iteration) of Conway's Game of Life.
+---next_generation iterates over every node in the grid and counts each
+---neighbors and setting the next state for each node.
+---@param grid Grid
+---@return Grid
 local function next_generation(grid)
 	local height = #grid
 	local width = #grid[1]
@@ -71,6 +106,11 @@ local function next_generation(grid)
 	return new_grid
 end
 
+---get_last_active goes through each row and determines the index if the last
+---active node. Which is useful to save some performance because we can skip
+---emtpy nodes on rendering
+---@param row Row
+---@return number
 local function get_last_active(row)
 	for i = #row, 1, -1 do
 		if row[i] == 1 then
@@ -80,7 +120,11 @@ local function get_last_active(row)
 	return NOACTIVE
 end
 
--- Show the grid in the Neovim buffer
+---display_grid renders every node depending on its state. It is either a space
+---or a block which can be manipulated by changing the active_char global
+---constant
+---@param grid Grid
+---@param buf number
 local function display_grid(grid, buf)
 	local lines = {}
 	for i = 1, #grid do
@@ -145,7 +189,7 @@ local function fill_from_current_buffer(grid)
 	for line_num, line in pairs(lines) do
 		for char_num = 1, #line do
 			local current_char = line:sub(char_num, char_num)
-			if current_char ~= " " then
+			if grid[line_num] ~= nil and current_char ~= " " then
 				grid[line_num][char_num] = 1
 			end
 		end
@@ -180,7 +224,7 @@ end
 function M.start_conway()
 	local buf = create_scratch_buffer()
 	local grid = initialize_grid()
-	fill_grid_random(grid)
+	fill_grid_randomly(grid)
 	display_grid(grid, buf)
 	defer_closing(buf)
 
@@ -207,9 +251,29 @@ function M.stop_conway()
 	end
 end
 
-vim.api.nvim_create_user_command("Conway", M.start_conway, { nargs = 0 })
+function M.setup(opts)
+	print("setup yeaaah")
+end
+
+vim.api.nvim_create_user_command("ConwayRandom", M.start_conway, { nargs = 0 })
 vim.api.nvim_create_user_command("ConwayFromCurrent", M.from_current_buffer, { nargs = 0 })
 vim.api.nvim_create_user_command("ConwayNewGrid", M.new_grid, { nargs = 0 })
 vim.api.nvim_create_user_command("ConwayStop", M.stop_conway, { nargs = 0 })
+
+-- vim.api.nvim_create_user_command("Conway", function(opts)
+-- 	local subcommand = opts.args:match("^%S+")
+-- 	if subcommand == "yeah" then
+-- 		print("yeah lets goooooo")
+-- 	elseif subcommand == "fuck" then
+-- 		print("oh fuck")
+-- 	else
+-- 		vim.notify("Dont know this command")
+-- 	end
+-- end, {
+-- 	nargs = 1,
+-- 	complete = function()
+-- 		return { "yeah", "fuck" }
+-- 	end,
+-- })
 
 return M

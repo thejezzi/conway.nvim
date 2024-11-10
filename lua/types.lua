@@ -1,0 +1,2 @@
+---@alias Grid Row[]
+---@alias Row number[]
