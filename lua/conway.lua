@@ -306,54 +306,59 @@ end
 
 ---@class ConwaySubcommands
 local SUBCOMMANDS = {
-  random = "random",
-  from_current = "from_current",
-  new_grid = "new_grid",
-  anonymize = "anonymize",
-  pause = "pause",
-  resume = "resume",
-  destroy = "destroy",
+  random = M.random,
+  from_current = M.from_current_buffer,
+  new_grid = M.new_grid,
+  anonymize = M.anonymize,
+  pause = M.pause,
+  resume = M.resume,
+  destroy = M.destroy,
 }
 
 ---returns all values as slice
+---@param t table<string, function>
 ---@return string[]
-function SUBCOMMANDS:values()
+local function as_string_slice(t)
   local slice = {}
-  for _, v in pairs(self) do
-    table.insert(slice, v)
+  for k, _ in pairs(t) do
+    table.insert(slice, k)
   end
   return slice
 end
 
+---parse returns the corresponding subcommand
+---@param s string
+---@return nil|string
+local function parse_cmd(s)
+  print(s)
+  for k, func in pairs(SUBCOMMANDS) do
+    if s == k then
+      func()
+      return nil
+    end
+  end
+  error("no such command")
+end
+
 ---handles every subcommand
 ---@param opts any
-function SUBCOMMANDS.handle(opts)
-	local subcmd = opts.args:match("^%S+")
-
-  if subcmd == SUBCOMMANDS.random then
-    M.random()
-  elseif subcmd == SUBCOMMANDS.from_current then
-    M.from_current_buffer()
-  elseif subcmd == SUBCOMMANDS.new_grid then
-    M.new_grid()
-  elseif subcmd == SUBCOMMANDS.pause then
-    M.pause()
-  elseif subcmd == SUBCOMMANDS.resume then
-    M.resume()
-  elseif subcmd == SUBCOMMANDS.destroy then
-    M.destroy()
-  elseif subcmd == SUBCOMMANDS.anonymize then
-    M.anonymize()
-  else
-    vim.notify("No such command", vim.log.levels.ERROR)
+local function handle_cmd(opts)
+  local cmd = opts.args:match("^%S+")
+	local ok, err = pcall(parse_cmd, cmd)
+  if not ok then
+    print("Error: ", err)
   end
 end
 
-vim.api.nvim_create_user_command("Conway", SUBCOMMANDS.handle, {
+---returns the keys as string values for neovim command completion
+---@return string[]
+local function cmd_completion()
+  return as_string_slice(SUBCOMMANDS)
+end
+
+vim.api.nvim_create_user_command("Conway", handle_cmd, {
 	nargs = 1,
-	complete = function()
-		return SUBCOMMANDS:values()
-	end,
+	complete = cmd_completion
 })
 
 return M
