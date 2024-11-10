@@ -189,7 +189,7 @@ end
 ---@return Grid grid filled with active nodes depending on the character of the current buffer
 local function read_from_current_buffer(grid)
 	local current_buf = vim.api.nvim_get_current_buf()
-	local first_line = vim.fn.line("w0")
+	local first_line = vim.fn.line("w0")-1 -- convert to zero based index by substracting 1
 	local last_line = vim.fn.line("w$")
 
 	local visible_lines = vim.api.nvim_buf_get_lines(current_buf, first_line, last_line, false)
@@ -235,6 +235,12 @@ function M.from_current_buffer()
 	local grid = grid_from_current_buffer()
 	local scratch = create_scratch_buffer()
 	start_render_loop(grid, scratch)
+end
+
+function M.anonymize()
+  local grid = grid_from_current_buffer()
+  local scratch = create_scratch_buffer()
+  render(grid, scratch, false)
 end
 
 ---new_grid creates and renders a new grid to a new scratch buffer which makes
@@ -286,6 +292,7 @@ local SUBCOMMANDS = {
   random = "random",
   from_current = "from_current",
   new_grid = "new_grid",
+  anonymize = "anonymize",
   destroy = "destroy",
 }
 
@@ -312,6 +319,8 @@ function SUBCOMMANDS.handle(opts)
     M.new_grid()
   elseif subcmd == SUBCOMMANDS.destroy then
     M.destroy()
+  elseif subcmd == SUBCOMMANDS.anonymize then
+    M.anonymize()
   else
     vim.notify("No such command", vim.log.levels.ERROR)
   end
