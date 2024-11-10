@@ -2,6 +2,7 @@ local NOACTIVE = -1
 local CLOSING_GROUP_STRING = "conway_closing"
 
 local M = {}
+---@type uv_timer_t|nil
 local conway_timer = nil
 ---@type ConwaySetupOpts
 local default_opts = {
@@ -261,11 +262,27 @@ function M.random()
 	start_render_loop(grid, scratch)
 end
 
+
+---destroy stops and removes the timer that runs the render loop
+function M.pause()
+	if conway_timer then
+		conway_timer:stop()
+    vim.notify("conway loop stopped")
+	end
+end
+
+function M.resume()
+  if conway_timer then
+    conway_timer:again()
+  end
+end
+
 ---destroy stops and removes the timer that runs the render loop
 function M.destroy()
 	if conway_timer then
 		conway_timer:stop()
 		conway_timer:close()
+    conway_timer = nil
     vim.notify("conway loop stopped")
 	end
 end
@@ -293,6 +310,8 @@ local SUBCOMMANDS = {
   from_current = "from_current",
   new_grid = "new_grid",
   anonymize = "anonymize",
+  pause = "pause",
+  resume = "resume",
   destroy = "destroy",
 }
 
@@ -317,6 +336,10 @@ function SUBCOMMANDS.handle(opts)
     M.from_current_buffer()
   elseif subcmd == SUBCOMMANDS.new_grid then
     M.new_grid()
+  elseif subcmd == SUBCOMMANDS.pause then
+    M.pause()
+  elseif subcmd == SUBCOMMANDS.resume then
+    M.resume()
   elseif subcmd == SUBCOMMANDS.destroy then
     M.destroy()
   elseif subcmd == SUBCOMMANDS.anonymize then
