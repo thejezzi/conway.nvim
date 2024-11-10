@@ -281,7 +281,7 @@ function M.destroy()
         conway_timer:stop()
         conway_timer:close()
         conway_timer = nil
-        vim.notify("Conway loop stopped & destroyed")
+        vim.notify("Conway loop stopped & destroyed", vim.log.levels.DEBUG)
     end
 end
 
@@ -326,7 +326,6 @@ end
 ---@param s string
 ---@return nil|string
 local function parse_cmd(s)
-    print(s)
     for k, func in pairs(SUBCOMMANDS) do
         if s == k then
             func()
