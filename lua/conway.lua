@@ -8,6 +8,7 @@ local conway_timer = nil
 local default_opts = {
     on_char = "■", --"▊" -- "▇" -- "■"
     off_char = " ",
+    read_off_char = " ",
     update_interval_ms = 100,
     chance = 0.2,
 }
@@ -138,7 +139,7 @@ local function render(grid, buf, fill_all)
         local line = {}
         local last_active = get_last_active_node(grid[i])
         for j = 1, #grid[i] do
-            if fill_all or (last_active + 1 ~= j and last_active ~= NOACTIVE) then
+            if fill_all or (j < last_active + 1 and last_active ~= NOACTIVE) then
                 table.insert(line, grid[i][j] == 1 and global_opts.on_char or global_opts.off_char)
             end
         end
@@ -198,7 +199,7 @@ local function read_from_current_buffer(grid)
     for line_num, line in pairs(visible_lines) do
         for char_num = 1, #line do
             local current_char = line:sub(char_num, char_num)
-            if grid[line_num] ~= nil and current_char ~= global_opts.off_char then
+            if grid[line_num] ~= nil and current_char ~= global_opts.read_off_char then
                 grid[line_num][char_num] = 1
             end
         end
@@ -285,11 +286,17 @@ function M.destroy()
     end
 end
 
+function M.print_settings()
+    for k, v in pairs(global_opts) do
+        print(k, v)
+    end
+end
+
 ---setup applies options if defined
 ---@param opts ConwaySetupOpts
 function M.setup(opts)
+    global_opts = default_opts
     if opts == nil then
-        global_opts = default_opts
         return
     end
 
@@ -309,6 +316,7 @@ local SUBCOMMANDS = {
     pause = M.pause,
     resume = M.resume,
     destroy = M.destroy,
+    print = M.print_settings,
 }
 
 ---returns all values as slice

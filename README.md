@@ -26,13 +26,12 @@ return {
   opts = {
     on_char = '*',  -- Character used for active cells
     off_char = ' ',  -- Character used for inactive cells
+    read_off_char = ' ' -- Off state character to read from
     update_interval_ms = 100,  -- Update interval in milliseconds
     chance = 0.5,  -- Probability for cells to be alive in the initial random pattern
   },
 }
 ```
-
-
 
 ## ▶️ Usage
 
@@ -51,8 +50,6 @@ e.g. `CTRL-O` to go back to where you came from or close the scratch the way you
 - `:Conway resume`: Resumes a paused simulation.
 - `:Conway destroy`: Stops the current simulation and clears the grid.
 
-
-
 ## 📚 Contributing
 
 Contributions, feedback, and feature requests are welcome! Feel free to submit issues or pull requests on [GitHub](https://github.com/thejezzi/conway.nvim).
@@ -60,4 +57,3 @@ Contributions, feedback, and feature requests are welcome! Feel free to submit i
 ## 📓 License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
-
