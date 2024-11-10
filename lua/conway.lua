@@ -1,12 +1,17 @@
-require("types")
-
 local NOACTIVE = -1
+local CLOSING_GROUP_STRING = "conway_closing"
 
 local M = {}
 local conway_timer = nil
-local active_char = "■" --"▊" -- "▇" -- "■"
-local update_interval = 100
-local multiplier = 0.2
+---@type ConwaySetupOpts
+local default_opts = {
+  on_char = "■", --"▊" -- "▇" -- "■"
+  off_char = " ",
+  update_interval_ms = 100,
+  chance = 0.2,
+}
+local global_opts = default_opts
+
 
 ---initialize_grid creates a new matrix with zeroed values
 ---@return Grid
@@ -32,7 +37,7 @@ end
 local function fill_grid_randomly(grid)
 	for _, vi in pairs(grid) do
 		for j, _ in pairs(vi) do
-			vi[j] = math.random() < multiplier and 1 or 0
+			vi[j] = math.random() < global_opts.chance and 1 or 0
 		end
 	end
 	return grid
@@ -110,8 +115,8 @@ end
 ---active node. Which is useful to save some performance because we can skip
 ---emtpy nodes on rendering
 ---@param row Row
----@return number
-local function get_last_active(row)
+---@return number index or it returns the NOACTIVE constant which is just -1
+local function get_last_active_node(row)
 	for i = #row, 1, -1 do
 		if row[i] == 1 then
 			return i
@@ -123,38 +128,26 @@ end
 ---display_grid renders every node depending on its state. It is either a space
 ---or a block which can be manipulated by changing the active_char global
 ---constant
----@param grid Grid
----@param buf number
-local function display_grid(grid, buf)
+---@param grid Grid a matrix that holds all states of all nodes
+---@param buf number the buffer to render to
+---@param fill_all boolean wether to fill all possible positions or ignore the
+--- ones after the last active node
+local function render(grid, buf, fill_all)
 	local lines = {}
 	for i = 1, #grid do
 		local line = {}
-		local index_last_active = get_last_active(grid[i])
+		local last_active = get_last_active_node(grid[i])
 		for j = 1, #grid[i] do
-			if index_last_active + 1 == j or index_last_active == NOACTIVE then
-				goto continue
+			if fill_all or (last_active + 1 ~= j and last_active ~= NOACTIVE) then
+				table.insert(line, grid[i][j] == 1 and global_opts.on_char or global_opts.off_char)
 			end
-			table.insert(line, grid[i][j] == 1 and active_char or " ")
-			::continue::
 		end
 		table.insert(lines, table.concat(line, ""))
 	end
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 end
 
--- Show the grid in the Neovim buffer
-local function display_grid_fill_all(grid, buf)
-	local lines = {}
-	for i = 1, #grid do
-		local line = {}
-		for j = 1, #grid[i] do
-			table.insert(line, grid[i][j] == 1 and active_char or " ")
-		end
-		table.insert(lines, table.concat(line, ""))
-	end
-	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-end
-
+---unset_opts turns off options to make the rendered gol more appealing
 local function unset_opts()
 	vim.api.nvim_set_option_value("list", false, {})
 	vim.api.nvim_set_option_value("number", false, {})
@@ -162,6 +155,9 @@ local function unset_opts()
 	vim.api.nvim_set_option_value("colorcolumn", "", {})
 end
 
+---create_scratch_buffer spaws a new scratch buffer with turned off options such
+---ass line numbering or white space indications
+---@return integer bufferid which is the buffer id of the new created scratch buffer
 local function create_scratch_buffer()
 	local buf = vim.api.nvim_create_buf(false, true)
 	vim.api.nvim_set_current_buf(buf)
@@ -169,24 +165,37 @@ local function create_scratch_buffer()
 	return buf
 end
 
-local function defer_closing(buf)
-	local _ = vim.api.nvim_create_augroup("conway", { clear = true })
+---defer_closing creates a new autocmd group which is responsible for stopping
+---the timer. It registeres a new autocmd which listens to any event which gets
+---triggered when the scratch buffer is destroyed. The autocmd gets destroyed
+---as well when the timer was closed.
+---@param bufferid integer - buffer id of the scratch buffer
+local function defer_closing(bufferid)
+	local _ = vim.api.nvim_create_augroup(CLOSING_GROUP_STRING, { clear = true })
 	vim.api.nvim_create_autocmd({ "BufLeave", "BufUnload" }, {
-		buffer = buf,
+		buffer = bufferid,
 		once = true,
-		group = "conway",
+		group = CLOSING_GROUP_STRING,
 		callback = function()
-			M.stop_conway()
-			vim.api.nvim_clear_autocmds({ group = "conway" })
+			M.destroy()
+			vim.api.nvim_clear_autocmds({ group = CLOSING_GROUP_STRING })
 		end,
 	})
 end
 
-local function fill_from_current_buffer(grid)
+---read_from_current_buffer iterates over every character that is currently
+---visible and takes an non whitespace character as a one or true.
+---@param grid Grid
+---@return Grid grid filled with active nodes depending on the character of the current buffer
+local function read_from_current_buffer(grid)
 	local current_buf = vim.api.nvim_get_current_buf()
-	local lines = vim.api.nvim_buf_get_lines(current_buf, 0, -1, false)
+	local first_line = vim.fn.line("w0")
+	local last_line = vim.fn.line("w$")
 
-	for line_num, line in pairs(lines) do
+	local visible_lines = vim.api.nvim_buf_get_lines(current_buf, first_line, last_line, false)
+	-- local lines = vim.api.nvim_buf_get_lines(current_buf, 0, -1, false)
+
+	for line_num, line in pairs(visible_lines) do
 		for char_num = 1, #line do
 			local current_char = line:sub(char_num, char_num)
 			if grid[line_num] ~= nil and current_char ~= " " then
@@ -194,86 +203,125 @@ local function fill_from_current_buffer(grid)
 			end
 		end
 	end
+	return grid
 end
 
-function M.from_current_buffer()
-	local grid = initialize_grid()
-	fill_from_current_buffer(grid)
-	local buf = create_scratch_buffer()
-	display_grid(grid, buf)
-	defer_closing(buf)
+---grid_from_current_buffer combines two function to create a new grid from
+---the currently visible characters of your current buffer
+---@return Grid grid with active nodes depending on your current buffer
+local function grid_from_current_buffer()
+	return read_from_current_buffer(initialize_grid())
+end
+
+local function start_render_loop(grid, scratch)
+	render(grid, scratch, false)
+	defer_closing(scratch)
 
 	conway_timer = vim.uv.new_timer()
 	conway_timer:start(
 		0,
-		update_interval,
+		global_opts.update_interval_ms,
 		vim.schedule_wrap(function()
 			grid = next_generation(grid)
-			display_grid(grid, buf)
+			render(grid, scratch, false)
 		end)
 	)
 end
 
+---from_current_buffer creates a new grid and reads in every character in your
+---current buffer as a one and leaves everything else as a zero and starts
+---the game of life loop
+function M.from_current_buffer()
+	local grid = grid_from_current_buffer()
+	local scratch = create_scratch_buffer()
+	start_render_loop(grid, scratch)
+end
+
+---new_grid creates and renders a new grid to a new scratch buffer which makes
+---it easier to set nodes to 1 because you dont need write a bunch if spaces
 function M.new_grid()
 	local grid = initialize_grid()
 	local buf = create_scratch_buffer()
-	display_grid_fill_all(grid, buf)
+	render(grid, buf, true)
 end
 
--- Start Conway's Game of Life
-function M.start_conway()
-	local buf = create_scratch_buffer()
+--random iterates over every node and sets to 1 if the random number is greater
+--than the multiplier variable. So a 20% change by default.
+--It than runs the gol loop
+function M.random()
+	local scratch = create_scratch_buffer()
 	local grid = initialize_grid()
 	fill_grid_randomly(grid)
-	display_grid(grid, buf)
-	defer_closing(buf)
-
-	conway_timer = vim.uv.new_timer()
-	conway_timer:start(
-		0,
-		update_interval,
-		vim.schedule_wrap(function()
-			grid = next_generation(grid)
-			display_grid(grid, buf)
-		end)
-	)
+	start_render_loop(grid, scratch)
 end
 
--- Stops the running timer
-function M.stop_conway()
+---destroy stops and removes the timer that runs the render loop
+function M.destroy()
 	if conway_timer then
 		conway_timer:stop()
 		conway_timer:close()
-		conway_timer = nil
-		print("Conway loop stopped")
-	else
-		print("No Conway loop is currently running")
+    vim.notify("conway loop stopped")
 	end
 end
 
+---setup applies options if defined
+---@param opts ConwaySetupOpts
 function M.setup(opts)
-	print("setup yeaaah")
+	if opts == nil then
+    global_opts = default_opts
+		return
+	end
+
+  for k, v in pairs(opts) do
+    if v == nil then
+      goto continue
+    end
+    global_opts[k] = v
+    ::continue::
+  end
 end
 
-vim.api.nvim_create_user_command("ConwayRandom", M.start_conway, { nargs = 0 })
-vim.api.nvim_create_user_command("ConwayFromCurrent", M.from_current_buffer, { nargs = 0 })
-vim.api.nvim_create_user_command("ConwayNewGrid", M.new_grid, { nargs = 0 })
-vim.api.nvim_create_user_command("ConwayStop", M.stop_conway, { nargs = 0 })
+---@class ConwaySubcommands
+local SUBCOMMANDS = {
+  random = "random",
+  from_current = "from_current",
+  new_grid = "new_grid",
+  destroy = "destroy",
+}
 
--- vim.api.nvim_create_user_command("Conway", function(opts)
--- 	local subcommand = opts.args:match("^%S+")
--- 	if subcommand == "yeah" then
--- 		print("yeah lets goooooo")
--- 	elseif subcommand == "fuck" then
--- 		print("oh fuck")
--- 	else
--- 		vim.notify("Dont know this command")
--- 	end
--- end, {
--- 	nargs = 1,
--- 	complete = function()
--- 		return { "yeah", "fuck" }
--- 	end,
--- })
+---returns all values as slice
+---@return string[]
+function SUBCOMMANDS:values()
+  local slice = {}
+  for _, v in pairs(self) do
+    table.insert(slice, v)
+  end
+  return slice
+end
+
+---handles every subcommand
+---@param opts any
+function SUBCOMMANDS.handle(opts)
+	local subcmd = opts.args:match("^%S+")
+
+  if subcmd == SUBCOMMANDS.random then
+    M.random()
+  elseif subcmd == SUBCOMMANDS.from_current then
+    M.from_current_buffer()
+  elseif subcmd == SUBCOMMANDS.new_grid then
+    M.new_grid()
+  elseif subcmd == SUBCOMMANDS.destroy then
+    M.destroy()
+  else
+    vim.notify("No such command", vim.log.levels.ERROR)
+  end
+end
+
+vim.api.nvim_create_user_command("Conway", SUBCOMMANDS.handle, {
+	nargs = 1,
+	complete = function()
+		return SUBCOMMANDS:values()
+	end,
+})
 
 return M
